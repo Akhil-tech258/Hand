@@ -1,0 +1,2003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEURAL.DRAW — AI Hand Gesture Interface</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --navy: #021024;
+  --navy2: #031a38;
+  --cyan: #19E0E6;
+  --cyan2: #00f5ff;
+  --cyan-dim: rgba(25,224,230,0.15);
+  --cyan-glow: 0 0 20px rgba(25,224,230,0.6), 0 0 40px rgba(25,224,230,0.3);
+  --pink: #ff2d78;
+  --purple: #7b2fff;
+  --glass: rgba(3,26,56,0.7);
+  --glass2: rgba(25,224,230,0.05);
+  --border: rgba(25,224,230,0.25);
+  --text: #c8f0f2;
+  --dim: rgba(200,240,242,0.5);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--navy);
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* PARTICLE BACKGROUND */
+#particle-bg {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* GRID OVERLAY */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(25,224,230,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(25,224,230,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* SCAN LINE */
+body::after {
+  content: '';
+  position: fixed;
+  top: -100%;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.4;
+  animation: scanLine 6s linear infinite;
+  z-index: 1;
+  pointer-events: none;
+}
+
+@keyframes scanLine {
+  0% { top: -5%; }
+  100% { top: 105%; }
+}
+
+/* NAV */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 100;
+  background: rgba(2,16,36,0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  height: 64px;
+}
+
+.nav-logo {
+  font-family: 'Orbitron', monospace;
+  font-weight: 900;
+  font-size: 1.1rem;
+  color: var(--cyan);
+  text-shadow: var(--cyan-glow);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-logo::before {
+  content: '◈';
+  font-size: 1.3rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+.nav-links {
+  display: flex;
+  gap: 0.2rem;
+  list-style: none;
+  flex: 1;
+  justify-content: center;
+}
+
+.nav-links a {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  text-decoration: none;
+  padding: 0.4rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.nav-links a::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--cyan);
+  transform: scaleX(0);
+  transition: transform 0.3s;
+}
+
+.nav-links a:hover {
+  color: var(--cyan);
+  border-color: var(--border);
+  background: var(--cyan-dim);
+  text-shadow: 0 0 10px var(--cyan);
+}
+
+.nav-links a:hover::before { transform: scaleX(1); }
+
+.nav-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--cyan);
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #00ff88;
+  box-shadow: 0 0 8px #00ff88;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* MAIN */
+main {
+  position: relative;
+  z-index: 2;
+  padding-top: 80px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* HERO BANNER */
+.hero-banner {
+  text-align: center;
+  padding: 2rem 0 1.5rem;
+}
+
+.hero-title {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(1.8rem, 5vw, 3.5rem);
+  font-weight: 900;
+  background: linear-gradient(135deg, var(--cyan2), var(--cyan), var(--purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  animation: glowText 3s ease-in-out infinite alternate;
+}
+
+@keyframes glowText {
+  from { filter: drop-shadow(0 0 10px rgba(25,224,230,0.3)); }
+  to   { filter: drop-shadow(0 0 30px rgba(25,224,230,0.8)); }
+}
+
+.hero-sub {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--dim);
+  letter-spacing: 0.25em;
+  margin-top: 0.5rem;
+  text-transform: uppercase;
+}
+
+/* NEON DIVIDER */
+.neon-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--purple), var(--cyan), transparent);
+  margin: 1.5rem 0;
+  position: relative;
+  animation: dividerFlow 4s ease-in-out infinite alternate;
+}
+
+@keyframes dividerFlow {
+  from { opacity: 0.5; }
+  to   { opacity: 1; box-shadow: 0 0 15px var(--cyan); }
+}
+
+/* MAIN GRID */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* GLASS CARD */
+.glass-card {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(20px);
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow 0.3s;
+}
+
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(25,224,230,0.05) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.glass-card:hover {
+  box-shadow: 0 0 30px rgba(25,224,230,0.15), inset 0 0 30px rgba(25,224,230,0.03);
+}
+
+.card-header {
+  padding: 1rem 1.2rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.card-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--cyan);
+  text-shadow: 0 0 10px var(--cyan);
+}
+
+.card-icon {
+  font-size: 1rem;
+  filter: drop-shadow(0 0 6px var(--cyan));
+}
+
+/* CAMERA SECTION */
+.camera-wrapper {
+  position: relative;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 1rem;
+  aspect-ratio: 4/3;
+}
+
+#webcam, #draw-canvas, #overlay-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border-radius: 12px;
+}
+
+#webcam { transform: scaleX(-1); object-fit: cover; }
+#draw-canvas { z-index: 2; }
+#overlay-canvas { z-index: 3; }
+
+.camera-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* corner brackets */
+.hud-corner {
+  position: absolute;
+  width: 24px; height: 24px;
+  border-color: var(--cyan);
+  border-style: solid;
+  opacity: 0.8;
+}
+.hud-corner.tl { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+.hud-corner.tr { top: 10px; right: 10px; border-width: 2px 2px 0 0; }
+.hud-corner.bl { bottom: 10px; left: 10px; border-width: 0 0 2px 2px; }
+.hud-corner.br { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
+.hud-label {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--cyan);
+  letter-spacing: 0.2em;
+  background: rgba(2,16,36,0.6);
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.gesture-display {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Orbitron', monospace;
+  font-size: 0.65rem;
+  color: #00ff88;
+  letter-spacing: 0.15em;
+  background: rgba(0,255,136,0.1);
+  border: 1px solid rgba(0,255,136,0.3);
+  padding: 3px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+  text-shadow: 0 0 10px #00ff88;
+  transition: all 0.3s;
+}
+
+.cam-start-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2,16,36,0.95);
+  z-index: 10;
+  gap: 1rem;
+  border-radius: 12px;
+}
+
+.cam-start-overlay p {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-align: center;
+  padding: 0 1rem;
+}
+
+/* CONTROL PANEL */
+.control-panel { padding: 0.8rem; display: flex; flex-direction: column; gap: 0.8rem; }
+
+.mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+.mode-btn {
+  background: rgba(25,224,230,0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.7rem 0.5rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--dim);
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  position: relative;
+  overflow: hidden;
+}
+
+.mode-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--cyan), var(--purple));
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.mode-btn:hover::before, .mode-btn.active::before { opacity: 0.12; }
+
+.mode-btn:hover, .mode-btn.active {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  box-shadow: 0 0 15px rgba(25,224,230,0.2);
+}
+
+.mode-btn .emoji { font-size: 1.4rem; position: relative; z-index: 1; }
+.mode-btn span { position: relative; z-index: 1; }
+
+.shape-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.4rem; }
+
+.shape-btn {
+  background: rgba(123,47,255,0.1);
+  border: 1px solid rgba(123,47,255,0.3);
+  border-radius: 8px;
+  padding: 0.5rem 0.2rem;
+  cursor: pointer;
+  font-size: 0.6rem;
+  font-family: 'Orbitron', monospace;
+  color: var(--purple);
+  letter-spacing: 0.05em;
+  transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.shape-btn:hover, .shape-btn.active {
+  background: rgba(123,47,255,0.25);
+  border-color: var(--purple);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(123,47,255,0.4);
+}
+
+.shape-btn .s-icon { font-size: 1.1rem; }
+
+.section-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--dim);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 0.3rem;
+}
+
+/* GESTURE LEGEND */
+.gesture-list { display: flex; flex-direction: column; gap: 0.35rem; }
+
+.gesture-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(25,224,230,0.04);
+  border-radius: 6px;
+  border-left: 2px solid var(--border);
+}
+
+.gesture-item .g-icon { font-size: 1rem; flex-shrink: 0; }
+.gesture-item .g-text { font-size: 0.72rem; font-weight: 500; color: var(--dim); }
+.gesture-item .g-action { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; color: var(--cyan); margin-left: auto; }
+
+/* PRIMARY BUTTON */
+.btn-primary {
+  background: linear-gradient(135deg, rgba(25,224,230,0.15), rgba(25,224,230,0.05));
+  border: 1px solid var(--cyan);
+  border-radius: 10px;
+  padding: 0.75rem 1.5rem;
+  color: var(--cyan);
+  font-family: 'Orbitron', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+  transition: all 0.3s;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%,-50%) scale(0);
+  width: 200%; padding-top: 200%;
+  background: radial-gradient(circle, rgba(25,224,230,0.2) 0%, transparent 60%);
+  transition: transform 0.4s, opacity 0.4s;
+  opacity: 0;
+}
+
+.btn-primary:hover {
+  box-shadow: var(--cyan-glow);
+  text-shadow: 0 0 10px var(--cyan);
+}
+
+.btn-primary:hover::after { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+
+.btn-cam {
+  background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,255,136,0.05));
+  border-color: #00ff88;
+  color: #00ff88;
+}
+
+.btn-cam:hover { box-shadow: 0 0 20px rgba(0,255,136,0.4); text-shadow: 0 0 10px #00ff88; }
+
+/* THREE.JS CANVAS */
+#three-canvas {
+  width: 100%;
+  height: 200px;
+  border-radius: 10px;
+  margin: 0.5rem 0;
+}
+
+/* EXPORT SECTION */
+.export-section {
+  margin-bottom: 1.5rem;
+}
+
+#export-canvas {
+  width: 100%;
+  height: 260px;
+  background: #fff;
+  border-radius: 12px;
+  display: block;
+  margin-top: 0.8rem;
+}
+
+.export-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.btn-secondary {
+  background: rgba(255,45,120,0.1);
+  border: 1px solid rgba(255,45,120,0.4);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  color: var(--pink);
+  font-family: 'Orbitron', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: all 0.3s;
+  flex: 1;
+}
+
+.btn-secondary:hover {
+  background: rgba(255,45,120,0.2);
+  box-shadow: 0 0 15px rgba(255,45,120,0.3);
+}
+
+/* MUSIC PLAYER */
+.music-section { margin-bottom: 2rem; }
+
+.music-player {
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.music-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+.music-card {
+  background: rgba(25,224,230,0.04);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+
+.music-card.active {
+  border-color: var(--cyan);
+  background: rgba(25,224,230,0.08);
+  box-shadow: 0 0 20px rgba(25,224,230,0.15);
+}
+
+.music-card:hover { border-color: var(--cyan); transform: translateY(-2px); }
+
+.music-artwork {
+  width: 60px; height: 60px;
+  border-radius: 8px;
+  margin-bottom: 0.7rem;
+  font-size: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+}
+
+.music-card:nth-child(1) .music-artwork { background: linear-gradient(135deg, #021024, #19E0E6); }
+.music-card:nth-child(2) .music-artwork { background: linear-gradient(135deg, #021024, #7b2fff); }
+
+.music-card-title { font-family: 'Orbitron', monospace; font-size: 0.72rem; font-weight: 700; color: var(--text); }
+.music-card-artist { font-size: 0.7rem; color: var(--dim); margin-top: 0.2rem; }
+
+.music-card-badge {
+  position: absolute;
+  top: 0.7rem; right: 0.7rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.55rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--cyan-dim);
+  color: var(--cyan);
+  border: 1px solid var(--border);
+}
+
+.music-card.active .music-card-badge {
+  background: rgba(25,224,230,0.2);
+  color: #fff;
+  border-color: var(--cyan);
+}
+
+/* PROGRESS BAR */
+.progress-container { position: relative; padding: 0.2rem 0; cursor: pointer; }
+
+.progress-track {
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  border-radius: 2px;
+  position: relative;
+  transition: width 0.5s linear;
+  box-shadow: 0 0 8px var(--cyan);
+}
+
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  right: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px var(--cyan);
+}
+
+.time-display {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--dim);
+  margin-top: 0.5rem;
+}
+
+/* EQUALIZER */
+.equalizer {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 30px;
+  padding: 0 0.5rem;
+}
+
+.eq-bar {
+  flex: 1;
+  background: linear-gradient(0deg, var(--cyan), var(--purple));
+  border-radius: 2px 2px 0 0;
+  min-height: 3px;
+  transition: height 0.1s ease;
+  box-shadow: 0 0 4px var(--cyan);
+}
+
+/* MUSIC CONTROLS */
+.music-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.ctrl-btn {
+  background: rgba(25,224,230,0.08);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 42px; height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--text);
+  transition: all 0.3s;
+}
+
+.ctrl-btn:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
+  box-shadow: 0 0 12px rgba(25,224,230,0.3);
+  transform: scale(1.1);
+}
+
+.ctrl-btn.play {
+  width: 54px; height: 54px;
+  font-size: 1.4rem;
+  border-color: var(--cyan);
+  background: rgba(25,224,230,0.12);
+}
+
+.ctrl-btn.play:hover {
+  background: rgba(25,224,230,0.25);
+  box-shadow: var(--cyan-glow);
+}
+
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0 0.3rem;
+}
+
+.volume-row label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.volume-slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  -webkit-appearance: none;
+  background: linear-gradient(90deg, var(--cyan) var(--vol, 70%), rgba(255,255,255,0.1) var(--vol, 70%));
+  cursor: pointer;
+  outline: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 8px var(--cyan);
+  cursor: pointer;
+}
+
+/* GESTURE MUSIC LEGEND */
+.gesture-music-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem;
+}
+
+.gm-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.2rem;
+  background: rgba(25,224,230,0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.gm-item .g { font-size: 1.3rem; }
+.gm-item .a { font-family: 'Share Tech Mono', monospace; font-size: 0.52rem; color: var(--cyan); }
+
+/* COLOR PICKER */
+.color-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.color-swatch.active, .color-swatch:hover {
+  transform: scale(1.2);
+  border-color: #fff;
+  box-shadow: 0 0 10px currentColor;
+}
+
+/* STROKE SIZE */
+.stroke-slider {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  background: linear-gradient(90deg, var(--cyan), rgba(255,255,255,0.1));
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.stroke-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan);
+}
+
+/* STATS ROW */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3,1fr);
+  gap: 0.5rem;
+}
+
+.stat-item {
+  background: rgba(25,224,230,0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  text-align: center;
+}
+
+.stat-val {
+  font-family: 'Orbitron', monospace;
+  font-size: 1rem;
+  font-weight: 900;
+  color: var(--cyan);
+  text-shadow: 0 0 10px var(--cyan);
+}
+
+.stat-lbl {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.55rem;
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+
+/* ALERT */
+.alert-bar {
+  background: rgba(25,224,230,0.07);
+  border: 1px solid rgba(25,224,230,0.2);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--cyan);
+  letter-spacing: 0.1em;
+  margin: 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* MEDIAPIPE LOADING */
+.mp-status {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  color: #ffaa00;
+  text-shadow: 0 0 8px #ffaa00;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.mp-status.ready { color: #00ff88; text-shadow: 0 0 8px #00ff88; }
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .main-grid { grid-template-columns: 1fr; }
+  .music-cards { grid-template-columns: 1fr 1fr; }
+  .gesture-music-row { grid-template-columns: repeat(3,1fr); }
+}
+
+@media (max-width: 600px) {
+  nav { padding: 0 1rem; gap: 0.5rem; }
+  .nav-links { display: none; }
+  .music-cards { grid-template-columns: repeat(3,1fr); }
+  .stats-row { grid-template-columns: repeat(3,1fr); }
+}
+
+/* FLICKER */
+@keyframes flicker {
+  0%,100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.7; }
+  94% { opacity: 1; }
+  97% { opacity: 0.8; }
+  98% { opacity: 1; }
+}
+
+.flicker { animation: flicker 5s ease-in-out infinite; }
+
+/* FLOAT */
+@keyframes float {
+  0%,100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+/* HOLOGRAM SHIMMER */
+@keyframes hologram {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.hologram-text {
+  background: linear-gradient(90deg, var(--cyan), #fff, var(--purple), var(--cyan));
+  background-size: 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: hologram 3s linear infinite;
+}
+</style>
+</head>
+<body>
+
+<!-- PARTICLE CANVAS -->
+<canvas id="particle-bg"></canvas>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo flicker">NEURAL<span style="color:#7b2fff">.</span>DRAW</div>
+  <ul class="nav-links">
+    <li><a href="#">Home</a></li>
+    <li><a href="#">Air Draw</a></li>
+    <li><a href="#">3D Shapes</a></li>
+    <li><a href="#">Music</a></li>
+    <li><a href="#">Settings</a></li>
+  </ul>
+  <div class="nav-status">
+    <div class="status-dot"></div>
+    <span id="mp-status-nav">INITIALIZING…</span>
+  </div>
+</nav>
+
+<main>
+  <!-- HERO -->
+  <div class="hero-banner">
+    <h1 class="hero-title">AI HAND GESTURE INTERFACE</h1>
+    <p class="hero-sub">◈ Real-time MediaPipe · Three.js 3D · Air Drawing System ◈</p>
+  </div>
+
+  <div class="neon-divider"></div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- LEFT: CAMERA + STATS -->
+    <div style="display:flex;flex-direction:column;gap:1rem;">
+
+      <!-- CAMERA FEED -->
+      <div class="glass-card">
+        <div class="card-header">
+          <span class="card-icon">📡</span>
+          <span class="card-title">LIVE HAND TRACKING — CAM FEED</span>
+          <span class="mp-status" id="mp-status" style="margin-left:auto;">⚡ LOADING AI…</span>
+        </div>
+        <div class="camera-wrapper">
+          <video id="webcam" autoplay muted playsinline></video>
+          <canvas id="draw-canvas"></canvas>
+          <canvas id="overlay-canvas"></canvas>
+          <div class="camera-hud">
+            <div class="hud-corner tl"></div>
+            <div class="hud-corner tr"></div>
+            <div class="hud-corner bl"></div>
+            <div class="hud-corner br"></div>
+            <div class="hud-label">NEURAL SCAN ACTIVE</div>
+            <div class="gesture-display" id="gesture-display">◈ AWAITING GESTURE</div>
+          </div>
+          <div class="cam-start-overlay" id="cam-overlay">
+            <div style="font-size:3rem;">📷</div>
+            <p style="color:var(--cyan);font-size:0.9rem;font-weight:700;letter-spacing:0.2em;">ENABLE CAMERA</p>
+            <p>Click below to activate webcam<br>and begin hand gesture tracking</p>
+            <button class="btn-primary btn-cam" onclick="startCamera()" style="width:180px;">
+              ▶ ACTIVATE CAM
+            </button>
+          </div>
+        </div>
+        <div style="padding:0.8rem 1rem;">
+          <div class="stats-row">
+            <div class="stat-item">
+              <div class="stat-val" id="stat-fps">--</div>
+              <div class="stat-lbl">FPS</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-val" id="stat-points">0</div>
+              <div class="stat-lbl">POINTS</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-val" id="stat-gesture">--</div>
+              <div class="stat-lbl">GESTURE</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3D SHAPE VIEWER -->
+      <div class="glass-card">
+        <div class="card-header">
+          <span class="card-icon">🌐</span>
+          <span class="card-title">3D HOLOGRAPHIC SHAPE RENDERER</span>
+        </div>
+        <div style="padding:0.8rem;">
+          <canvas id="three-canvas"></canvas>
+          <div class="alert-bar">⬡ Three.js WebGL — Rotate shapes with gesture or click + drag on canvas</div>
+        </div>
+      </div>
+
+    </div><!-- /LEFT -->
+
+    <!-- RIGHT: CONTROL PANEL -->
+    <div class="glass-card">
+      <div class="card-header">
+        <span class="card-icon">⚙</span>
+        <span class="card-title">CONTROL PANEL</span>
+      </div>
+      <div class="control-panel">
+
+        <!-- CAM BUTTON -->
+        <button class="btn-primary btn-cam" onclick="startCamera()">▶ ACTIVATE WEBCAM</button>
+
+        <!-- DRAW MODE -->
+        <div>
+          <div class="section-label">✦ DRAW MODE</div>
+          <div class="mode-grid">
+            <button class="mode-btn active" id="mode-draw" onclick="setMode('draw')">
+              <span class="emoji">✏️</span><span>DRAW</span>
+            </button>
+            <button class="mode-btn" id="mode-erase" onclick="setMode('erase')">
+              <span class="emoji">🧹</span><span>ERASE</span>
+            </button>
+            <button class="mode-btn" id="mode-shape" onclick="setMode('shape')">
+              <span class="emoji">🔷</span><span>SHAPE</span>
+            </button>
+            <button class="mode-btn" id="mode-pan" onclick="setMode('pan')">
+              <span class="emoji">🖐️</span><span>PAN</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3D SHAPE SELECTOR -->
+        <div>
+          <div class="section-label">◈ 3D SHAPE SELECT</div>
+          <div class="shape-selector">
+            <button class="shape-btn active" onclick="select3DShape('cube')" id="s-cube">
+              <span class="s-icon">⬛</span>CUBE
+            </button>
+            <button class="shape-btn" onclick="select3DShape('sphere')" id="s-sphere">
+              <span class="s-icon">🔵</span>SPHERE
+            </button>
+            <button class="shape-btn" onclick="select3DShape('pyramid')" id="s-pyramid">
+              <span class="s-icon">🔺</span>PYRAMID
+            </button>
+            <button class="shape-btn" onclick="select3DShape('torus')" id="s-torus">
+              <span class="s-icon">🍩</span>TORUS
+            </button>
+          </div>
+        </div>
+
+        <!-- DRAW COLOR -->
+        <div>
+          <div class="section-label">🎨 STROKE COLOR</div>
+          <div class="color-row" id="color-row">
+            <div class="color-swatch active" style="background:#19E0E6;box-shadow:0 0 8px #19E0E6;" data-color="#19E0E6" onclick="selectColor(this)"></div>
+            <div class="color-swatch" style="background:#ff2d78;" data-color="#ff2d78" onclick="selectColor(this)"></div>
+            <div class="color-swatch" style="background:#7b2fff;" data-color="#7b2fff" onclick="selectColor(this)"></div>
+            <div class="color-swatch" style="background:#00ff88;" data-color="#00ff88" onclick="selectColor(this)"></div>
+            <div class="color-swatch" style="background:#ffaa00;" data-color="#ffaa00" onclick="selectColor(this)"></div>
+            <div class="color-swatch" style="background:#ffffff;" data-color="#ffffff" onclick="selectColor(this)"></div>
+          </div>
+        </div>
+
+        <!-- STROKE SIZE -->
+        <div>
+          <div class="section-label" style="display:flex;justify-content:space-between;">
+            ◻ STROKE WIDTH
+            <span id="stroke-val" style="color:var(--cyan);">4px</span>
+          </div>
+          <input type="range" class="stroke-slider" min="1" max="20" value="4" id="stroke-size"
+            oninput="document.getElementById('stroke-val').textContent=this.value+'px'; strokeWidth=+this.value;">
+        </div>
+
+        <!-- GESTURE LEGEND -->
+        <div>
+          <div class="section-label">✋ GESTURE REFERENCE</div>
+          <div class="gesture-list">
+            <div class="gesture-item">
+              <span class="g-icon">☝️</span>
+              <span class="g-text">Index finger up</span>
+              <span class="g-action">DRAW</span>
+            </div>
+            <div class="gesture-item">
+              <span class="g-icon">✌️</span>
+              <span class="g-text">Two fingers</span>
+              <span class="g-action">PAUSE</span>
+            </div>
+            <div class="gesture-item">
+              <span class="g-icon">🤚</span>
+              <span class="g-text">Open palm</span>
+              <span class="g-action">CLEAR</span>
+            </div>
+            <div class="gesture-item">
+              <span class="g-icon">✊</span>
+              <span class="g-text">Fist</span>
+              <span class="g-action">STOP</span>
+            </div>
+            <div class="gesture-item">
+              <span class="g-icon">👉</span>
+              <span class="g-text">Swipe right</span>
+              <span class="g-action">NEXT SHAPE</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- EXPORT BTN -->
+        <button class="btn-primary" onclick="exportDrawing()">
+          📤 EXPORT DRAWING
+        </button>
+
+        <!-- CLEAR BTN -->
+        <button class="btn-primary" onclick="clearDrawing()" style="background:rgba(255,45,120,0.08);border-color:var(--pink);color:var(--pink);">
+          🗑 CLEAR CANVAS
+        </button>
+
+      </div>
+    </div><!-- /RIGHT -->
+
+  </div><!-- /MAIN GRID -->
+
+  <div class="neon-divider"></div>
+
+  <!-- EXPORT SECTION -->
+  <div class="export-section glass-card">
+    <div class="card-header">
+      <span class="card-icon">📄</span>
+      <span class="card-title">DIGITAL DRAWING SHEET — EXPORT AREA</span>
+    </div>
+    <div style="padding:1rem;">
+      <div class="alert-bar">⬡ Your air drawings will transfer here when you click EXPORT DRAWING above</div>
+      <canvas id="export-canvas"></canvas>
+      <div class="export-toolbar">
+        <button class="btn-secondary" onclick="downloadExport()">⬇ DOWNLOAD PNG</button>
+        <button class="btn-secondary" onclick="clearExport()" style="border-color:var(--border);color:var(--dim);">🗑 CLEAR SHEET</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="neon-divider"></div>
+
+  <!-- MUSIC PLAYER -->
+  <div class="music-section glass-card">
+    <div class="card-header">
+      <span class="card-icon">🎵</span>
+      <span class="card-title">GESTURE CONTROLLED MUSIC PLAYER</span>
+    </div>
+    <div class="music-player">
+
+      <!-- GESTURE MUSIC CONTROLS LEGEND -->
+      <div>
+        <div class="section-label">✋ GESTURE MUSIC CONTROLS</div>
+        <div class="gesture-music-row">
+          <div class="gm-item"><span class="g">🤚</span><span class="a">PLAY</span></div>
+          <div class="gm-item"><span class="g">✊</span><span class="a">PAUSE</span></div>
+          <div class="gm-item"><span class="g">👉</span><span class="a">NEXT</span></div>
+          <div class="gm-item"><span class="g">👈</span><span class="a">PREV</span></div>
+          <div class="gm-item"><span class="g">✌️</span><span class="a">VOL+</span></div>
+        </div>
+      </div>
+
+      <!-- MUSIC CARDS -->
+      <div class="music-cards">
+        <div class="music-card active" id="track-0" onclick="selectTrack(0)">
+          <div class="music-artwork">🌊</div>
+          <div class="music-card-title">NEURAL DRIFT</div>
+          <div class="music-card-artist">CyberSynth × AI</div>
+          <div class="music-card-badge">3:42</div>
+        </div>
+        <div class="music-card" id="track-1" onclick="selectTrack(1)">
+          <div class="music-artwork">⚡</div>
+          <div class="music-card-title">QUANTUM PULSE</div>
+          <div class="music-card-artist">DataWave Studios</div>
+          <div class="music-card-badge">4:18</div>
+        </div>
+      </div>
+
+      <!-- EQUALIZER -->
+      <div style="display:flex;align-items:center;gap:1rem;">
+        <div style="font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--dim);letter-spacing:0.1em;white-space:nowrap;">EQ LIVE</div>
+        <div class="equalizer" id="equalizer">
+          <div class="eq-bar" style="height:60%"></div>
+          <div class="eq-bar" style="height:40%"></div>
+          <div class="eq-bar" style="height:80%"></div>
+          <div class="eq-bar" style="height:50%"></div>
+          <div class="eq-bar" style="height:70%"></div>
+          <div class="eq-bar" style="height:30%"></div>
+          <div class="eq-bar" style="height:90%"></div>
+          <div class="eq-bar" style="height:45%"></div>
+          <div class="eq-bar" style="height:65%"></div>
+          <div class="eq-bar" style="height:55%"></div>
+          <div class="eq-bar" style="height:75%"></div>
+          <div class="eq-bar" style="height:35%"></div>
+          <div class="eq-bar" style="height:85%"></div>
+          <div class="eq-bar" style="height:25%"></div>
+          <div class="eq-bar" style="height:95%"></div>
+          <div class="eq-bar" style="height:50%"></div>
+        </div>
+        <div style="font-family:'Share Tech Mono',monospace;font-size:0.7rem;color:var(--cyan);" id="now-playing-label">NEURAL DRIFT</div>
+      </div>
+
+      <!-- PROGRESS -->
+      <div>
+        <div class="progress-container" onclick="seekTrack(event)">
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="time-display">
+          <span id="time-current">0:00</span>
+          <span id="time-total">3:42</span>
+        </div>
+      </div>
+
+      <!-- CONTROLS -->
+      <div class="music-controls">
+        <button class="ctrl-btn" onclick="prevTrack()" title="Previous">⏮</button>
+        <button class="ctrl-btn" onclick="seekBy(-10)" title="-10s">⏪</button>
+        <button class="ctrl-btn play" id="play-btn" onclick="togglePlay()">▶</button>
+        <button class="ctrl-btn" onclick="seekBy(10)" title="+10s">⏩</button>
+        <button class="ctrl-btn" onclick="nextTrack()" title="Next">⏭</button>
+      </div>
+
+      <!-- VOLUME -->
+      <div class="volume-row">
+        <label>🔊 VOL</label>
+        <input type="range" class="volume-slider" min="0" max="100" value="70" id="vol-slider"
+          oninput="setVolume(+this.value)">
+        <span style="font-family:'Share Tech Mono',monospace;font-size:0.6rem;color:var(--cyan);" id="vol-label">70%</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="height:2rem;"></div>
+</main>
+
+<!-- MEDIAPIPE (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+/* ===========================
+   PARTICLE BACKGROUND
+=========================== */
+(function(){
+  const canvas = document.getElementById('particle-bg');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [];
+
+  function resize(){ W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; }
+  resize();
+  window.addEventListener('resize', resize);
+
+  for(let i=0;i<80;i++){
+    particles.push({
+      x: Math.random()*window.innerWidth,
+      y: Math.random()*window.innerHeight,
+      r: Math.random()*1.5+0.3,
+      vx: (Math.random()-0.5)*0.3,
+      vy: (Math.random()-0.5)*0.3,
+      a: Math.random()*0.6+0.1
+    });
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    particles.forEach(p=>{
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = `rgba(25,224,230,${p.a})`;
+      ctx.shadowColor = '#19E0E6';
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      p.x += p.vx; p.y += p.vy;
+      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+    });
+    // draw connections
+    ctx.shadowBlur = 0;
+    for(let i=0;i<particles.length;i++){
+      for(let j=i+1;j<particles.length;j++){
+        const dx=particles[i].x-particles[j].x, dy=particles[i].y-particles[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<120){
+          ctx.beginPath();
+          ctx.strokeStyle=`rgba(25,224,230,${0.08*(1-d/120)})`;
+          ctx.lineWidth=0.5;
+          ctx.moveTo(particles[i].x,particles[i].y);
+          ctx.lineTo(particles[j].x,particles[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* ===========================
+   THREE.JS 3D RENDERER
+=========================== */
+(function(){
+  const canvas = document.getElementById('three-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 2, 0.1, 100);
+  camera.position.set(0, 0, 4);
+
+  // Lighting
+  const amb = new THREE.AmbientLight(0x19E0E6, 0.4);
+  scene.add(amb);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+  dir.position.set(5,5,5);
+  scene.add(dir);
+  const pt = new THREE.PointLight(0x7b2fff, 1.5, 10);
+  pt.position.set(-3,2,2);
+  scene.add(pt);
+
+  let currentMesh = null;
+  let currentWire = null;
+
+  const shapes = {
+    cube:    () => new THREE.BoxGeometry(1.5,1.5,1.5),
+    sphere:  () => new THREE.SphereGeometry(1,32,32),
+    pyramid: () => new THREE.ConeGeometry(1,2,4),
+    torus:   () => new THREE.TorusGeometry(1,0.35,16,64)
+  };
+
+  window.select3DShape = function(name){
+    document.querySelectorAll('.shape-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('s-'+name)?.classList.add('active');
+    if(currentMesh){ scene.remove(currentMesh); scene.remove(currentWire); }
+
+    const geo = shapes[name]();
+    const mat = new THREE.MeshPhongMaterial({
+      color: 0x19E0E6,
+      emissive: 0x062a2b,
+      shininess: 100,
+      transparent: true,
+      opacity: 0.25,
+      side: THREE.DoubleSide
+    });
+    const wireMat = new THREE.MeshBasicMaterial({
+      color: 0x19E0E6,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.7
+    });
+
+    currentMesh = new THREE.Mesh(geo, mat);
+    currentWire = new THREE.Mesh(geo.clone(), wireMat);
+    scene.add(currentMesh);
+    scene.add(currentWire);
+  };
+  select3DShape('cube');
+
+  // Mouse drag to rotate
+  let isDragging=false, prevMouse={x:0,y:0};
+  canvas.addEventListener('mousedown', e=>{ isDragging=true; prevMouse={x:e.clientX,y:e.clientY}; });
+  window.addEventListener('mousemove', e=>{
+    if(!isDragging||!currentMesh) return;
+    const dx=(e.clientX-prevMouse.x)*0.01, dy=(e.clientY-prevMouse.y)*0.01;
+    currentMesh.rotation.y+=dx; currentMesh.rotation.x+=dy;
+    currentWire.rotation.y+=dx; currentWire.rotation.x+=dy;
+    prevMouse={x:e.clientX,y:e.clientY};
+  });
+  window.addEventListener('mouseup',()=>isDragging=false);
+
+  function resizeRenderer(){
+    const w=canvas.clientWidth, h=canvas.clientHeight;
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h;
+    camera.updateProjectionMatrix();
+  }
+
+  function animate(){
+    requestAnimationFrame(animate);
+    resizeRenderer();
+    if(currentMesh && !isDragging){
+      currentMesh.rotation.y += 0.008;
+      currentMesh.rotation.x += 0.003;
+      currentWire.rotation.y = currentMesh.rotation.y;
+      currentWire.rotation.x = currentMesh.rotation.x;
+    }
+    // Pulsing glow
+    const t = Date.now()*0.002;
+    if(currentMesh) currentMesh.material.emissiveIntensity = 0.5+Math.sin(t)*0.3;
+    pt.intensity = 1.5+Math.sin(t*1.3)*0.5;
+    renderer.render(scene,camera);
+  }
+  animate();
+
+  // External rotate from gesture
+  window.rotateShapeFromGesture = function(dx,dy){
+    if(!currentMesh) return;
+    currentMesh.rotation.y+=dx*0.05;
+    currentMesh.rotation.x+=dy*0.05;
+    currentWire.rotation.y=currentMesh.rotation.y;
+    currentWire.rotation.x=currentMesh.rotation.x;
+  };
+})();
+
+/* ===========================
+   DRAWING STATE
+=========================== */
+let currentColor = '#19E0E6';
+let strokeWidth = 4;
+let drawMode = 'draw'; // draw | erase | shape | pan
+let isDrawing = false;
+let lastPoint = null;
+let drawPoints = [];
+let totalPoints = 0;
+
+const drawCanvas = document.getElementById('draw-canvas');
+const drawCtx = drawCanvas.getContext('2d');
+const overlayCanvas = document.getElementById('overlay-canvas');
+const overlayCtx = overlayCanvas.getContext('2d');
+
+function resizeCanvases(){
+  const video = document.getElementById('webcam');
+  const wrapper = video.parentElement;
+  const W = wrapper.clientWidth;
+  const H = wrapper.clientHeight;
+  [drawCanvas, overlayCanvas].forEach(c=>{ c.width=W; c.height=H; });
+}
+
+function selectColor(el){
+  document.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));
+  el.classList.add('active');
+  currentColor = el.dataset.color;
+}
+
+function setMode(m){
+  drawMode = m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('mode-'+m)?.classList.add('active');
+}
+
+function clearDrawing(){
+  drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+  drawPoints = [];
+  totalPoints = 0;
+  document.getElementById('stat-points').textContent = '0';
+}
+
+function exportDrawing(){
+  const exp = document.getElementById('export-canvas');
+  const expCtx = exp.getContext('2d');
+  exp.width = exp.clientWidth * window.devicePixelRatio;
+  exp.height = exp.clientHeight * window.devicePixelRatio;
+  expCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+  // White bg
+  expCtx.fillStyle = '#fff';
+  expCtx.fillRect(0,0,exp.clientWidth,exp.clientHeight);
+
+  // Scale draw content
+  const scX = exp.clientWidth / drawCanvas.width;
+  const scY = exp.clientHeight / drawCanvas.height;
+  const sc = Math.min(scX,scY);
+
+  expCtx.save();
+  expCtx.translate((exp.clientWidth - drawCanvas.width*sc)/2, (exp.clientHeight - drawCanvas.height*sc)/2);
+  expCtx.scale(sc, sc);
+  expCtx.drawImage(drawCanvas, 0, 0);
+  expCtx.restore();
+
+  // Watermark
+  expCtx.font = 'bold 12px "Orbitron", monospace';
+  expCtx.fillStyle = 'rgba(25,224,230,0.4)';
+  expCtx.textAlign = 'right';
+  expCtx.fillText('NEURAL.DRAW', exp.clientWidth-10, exp.clientHeight-10);
+}
+
+function downloadExport(){
+  const exp = document.getElementById('export-canvas');
+  if(exp.width===0) { exportDrawing(); }
+  const link = document.createElement('a');
+  link.download = 'neural-draw-export.png';
+  link.href = exp.toDataURL();
+  link.click();
+}
+
+function clearExport(){
+  const exp = document.getElementById('export-canvas');
+  const ctx = exp.getContext('2d');
+  if(exp.width>0){
+    ctx.fillStyle='#fff';
+    ctx.fillRect(0,0,exp.width,exp.height);
+  }
+}
+
+/* ===========================
+   MEDIAPIPE HAND TRACKING
+=========================== */
+let hands = null;
+let camera = null;
+let lastGesture = '';
+let gestureHistory = [];
+let lastSwipeX = null;
+let lastFpsTime = Date.now();
+let fpsFrames = 0;
+let mpLoaded = false;
+
+function updateMpStatus(text, ready){
+  const el = document.getElementById('mp-status');
+  const nav = document.getElementById('mp-status-nav');
+  el.textContent = ready ? '✅ AI READY' : '⚡ ' + text;
+  el.className = 'mp-status' + (ready?' ready':'');
+  nav.textContent = ready ? 'NEURAL AI READY' : text;
+}
+
+async function startCamera(){
+  document.getElementById('cam-overlay').style.display='none';
+  updateMpStatus('LOADING MEDIAPIPE…', false);
+
+  const video = document.getElementById('webcam');
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'user', width:{ideal:640}, height:{ideal:480} },
+      audio:false
+    });
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      video.play();
+      resizeCanvases();
+      initMediaPipe(video);
+    };
+  } catch(e){
+    updateMpStatus('CAM DENIED', false);
+    alert('Camera access denied. Please allow camera permission.');
+  }
+}
+
+window.addEventListener('resize', resizeCanvases);
+
+function initMediaPipe(video){
+  updateMpStatus('LOADING HANDS MODEL…', false);
+
+  try {
+    hands = new Hands({
+      locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onHandResults);
+
+    const cam = new Camera(video, {
+      onFrame: async () => { await hands.send({ image: video }); },
+      width: 640, height: 480
+    });
+    cam.start();
+    mpLoaded = true;
+    updateMpStatus('', true);
+  } catch(e){
+    console.error('MediaPipe error:', e);
+    updateMpStatus('FALLBACK MODE', false);
+    startMouseFallback();
+  }
+}
+
+/* Fingertip indices in MediaPipe */
+const FINGERTIPS = [4,8,12,16,20]; // thumb, index, middle, ring, pinky
+const FINGER_BASE = [2,5,9,13,17];
+
+function countExtended(lm){
+  let count=0;
+  // Index
+  if(lm[8].y < lm[6].y) count++;
+  // Middle
+  if(lm[12].y < lm[10].y) count++;
+  // Ring
+  if(lm[16].y < lm[14].y) count++;
+  // Pinky
+  if(lm[20].y < lm[18].y) count++;
+  return count;
+}
+
+function detectGesture(lm){
+  const extended = countExtended(lm);
+  const thumbUp = lm[4].x < lm[3].x; // mirrored
+
+  // Fist: no fingers extended
+  if(extended===0) return 'FIST';
+  // Open palm: 4 fingers extended
+  if(extended===4) return 'OPEN_PALM';
+  // Two fingers (V / peace)
+  if(extended===2 && lm[8].y<lm[6].y && lm[12].y<lm[10].y && lm[16].y>lm[14].y) return 'TWO_FINGERS';
+  // Index only
+  if(extended===1 && lm[8].y<lm[6].y) return 'INDEX';
+  if(extended===3) return 'THREE_FINGERS';
+  return 'OTHER';
+}
+
+let prevIndexX = null;
+let gestureDebounce = {};
+
+function gestureAction(g, indexX){
+  const now = Date.now();
+  // Debounce per gesture 1.5s
+  if(gestureDebounce[g] && now - gestureDebounce[g] < 1500) return;
+
+  if(g === 'OPEN_PALM'){
+    clearDrawing();
+    gestureDebounce[g] = now;
+  } else if(g === 'FIST'){
+    // Stop drawing handled in drawing logic
+  }
+
+  // Swipe detection
+  if(prevIndexX !== null && indexX !== null){
+    const delta = indexX - prevIndexX;
+    if(Math.abs(delta) > 0.12){
+      const dir = delta > 0 ? 'SWIPE_RIGHT' : 'SWIPE_LEFT';
+      if(!gestureDebounce[dir] || now - gestureDebounce[dir] > 1000){
+        if(dir==='SWIPE_RIGHT') nextTrack();
+        else prevTrack();
+        gestureDebounce[dir] = now;
+      }
+    }
+  }
+  prevIndexX = indexX;
+}
+
+let lastLandmarks = null;
+
+function onHandResults(results){
+  // FPS
+  fpsFrames++;
+  const now = Date.now();
+  if(now - lastFpsTime >= 1000){
+    document.getElementById('stat-fps').textContent = fpsFrames;
+    fpsFrames=0; lastFpsTime=now;
+  }
+
+  const W = overlayCanvas.width;
+  const H = overlayCanvas.height;
+
+  overlayCtx.clearRect(0,0,W,H);
+
+  if(!results.multiHandLandmarks || results.multiHandLandmarks.length===0){
+    if(isDrawing){ isDrawing=false; lastPoint=null; }
+    setGestureDisplay('◈ NO HAND DETECTED', '#555');
+    return;
+  }
+
+  const lm = results.multiHandLandmarks[0];
+  lastLandmarks = lm;
+
+  // Draw skeleton
+  drawSkeleton(lm, W, H);
+
+  // Detect gesture
+  const gesture = detectGesture(lm);
+  const indexTip = lm[8];
+
+  // Gesture display
+  const gLabels = {
+    'FIST':'✊ FIST — STOPPED',
+    'OPEN_PALM':'🤚 OPEN PALM — CLEARING',
+    'TWO_FINGERS':'✌️ TWO FINGERS — PAUSE',
+    'INDEX':'☝️ INDEX — DRAWING',
+    'THREE_FINGERS':'🤟 THREE FINGERS',
+    'OTHER':'◈ TRACKING'
+  };
+  setGestureDisplay(gLabels[gesture]||'◈ '+gesture);
+
+  document.getElementById('stat-gesture').textContent = gesture.slice(0,4);
+
+  // Gesture for music
+  const gpNow = Date.now();
+  if(gesture==='OPEN_PALM' && (!gestureDebounce['play']||gpNow-gestureDebounce['play']>2000)){
+    if(!musicPlaying){ togglePlay(); gestureDebounce['play']=gpNow; }
+  }
+  if(gesture==='FIST' && (!gestureDebounce['pause']||gpNow-gestureDebounce['pause']>2000)){
+    if(musicPlaying){ togglePlay(); gestureDebounce['pause']=gpNow; }
+  }
+  if(gesture==='TWO_FINGERS' && (!gestureDebounce['volup']||gpNow-gestureDebounce['volup']>1000)){
+    const v = document.getElementById('vol-slider');
+    v.value = Math.min(100,+v.value+10);
+    setVolume(+v.value);
+    gestureDebounce['volup']=gpNow;
+  }
+
+  // Drawing logic
+  const px = (1 - indexTip.x) * W; // mirror
+  const py = indexTip.y * H;
+
+  gestureAction(gesture, indexTip.x);
+
+  if(gesture==='INDEX' && drawMode==='draw'){
+    if(isDrawing && lastPoint){
+      drawCtx.beginPath();
+      drawCtx.strokeStyle = currentColor;
+      drawCtx.lineWidth = strokeWidth;
+      drawCtx.lineCap = 'round';
+      drawCtx.lineJoin = 'round';
+      drawCtx.shadowColor = currentColor;
+      drawCtx.shadowBlur = strokeWidth*2;
+      drawCtx.moveTo(lastPoint.x, lastPoint.y);
+      drawCtx.lineTo(px, py);
+      drawCtx.stroke();
+      totalPoints++;
+      document.getElementById('stat-points').textContent = totalPoints;
+    }
+    isDrawing = true;
+    lastPoint = {x:px, y:py};
+
+    // Draw fingertip glow
+    overlayCtx.beginPath();
+    overlayCtx.arc(px, py, 10, 0, Math.PI*2);
+    overlayCtx.fillStyle = 'rgba(25,224,230,0.3)';
+    overlayCtx.fill();
+    overlayCtx.beginPath();
+    overlayCtx.arc(px, py, 5, 0, Math.PI*2);
+    overlayCtx.fillStyle = '#19E0E6';
+    overlayCtx.shadowColor = '#19E0E6';
+    overlayCtx.shadowBlur = 15;
+    overlayCtx.fill();
+  } else {
+    isDrawing = false;
+    lastPoint = null;
+  }
+
+  if(gesture==='INDEX' && drawMode==='erase'){
+    drawCtx.clearRect(px-20,py-20,40,40);
+  }
+}
+
+// CONNECTIONS for hand skeleton
+const HAND_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [5,9],[9,10],[10,11],[11,12],
+  [9,13],[13,14],[14,15],[15,16],
+  [13,17],[17,18],[18,19],[19,20],
+  [0,17]
+];
+
+function drawSkeleton(lm, W, H){
+  // Connections
+  HAND_CONNECTIONS.forEach(([a,b])=>{
+    const ax=(1-lm[a].x)*W, ay=lm[a].y*H;
+    const bx=(1-lm[b].x)*W, by=lm[b].y*H;
+    overlayCtx.beginPath();
+    overlayCtx.strokeStyle='rgba(25,224,230,0.7)';
+    overlayCtx.lineWidth=2;
+    overlayCtx.shadowColor='#19E0E6';
+    overlayCtx.shadowBlur=6;
+    overlayCtx.moveTo(ax,ay);
+    overlayCtx.lineTo(bx,by);
+    overlayCtx.stroke();
+  });
+
+  // Landmark dots
+  lm.forEach((pt,i)=>{
+    const x=(1-pt.x)*W, y=pt.y*H;
+    const isTip = FINGERTIPS.includes(i);
+    overlayCtx.beginPath();
+    overlayCtx.arc(x,y,isTip?6:3,0,Math.PI*2);
+    overlayCtx.fillStyle = isTip ? '#19E0E6' : 'rgba(100,200,255,0.8)';
+    overlayCtx.shadowColor = '#19E0E6';
+    overlayCtx.shadowBlur = isTip ? 12 : 4;
+    overlayCtx.fill();
+  });
+}
+
+function setGestureDisplay(text, col){
+  const el = document.getElementById('gesture-display');
+  el.textContent = text;
+  el.style.color = col||'#00ff88';
+  el.style.borderColor = (col||'#00ff88').replace(')',',0.3)').replace('rgb','rgba');
+  el.style.background = (col||'rgba(0,255,136').replace(')',',0.1)').replace('#','rgba(').replace(/,/,',');
+}
+
+/* ===========================
+   MOUSE FALLBACK DRAWING
+=========================== */
+function startMouseFallback(){
+  updateMpStatus('MOUSE MODE (no AI cam)', false);
+  let mouseDown = false;
+  drawCanvas.addEventListener('mousedown', e=>{
+    if(drawMode!=='draw'&&drawMode!=='erase') return;
+    mouseDown=true;
+    const r=drawCanvas.getBoundingClientRect();
+    lastPoint={x:e.clientX-r.left,y:e.clientY-r.top};
+  });
+  drawCanvas.addEventListener('mousemove', e=>{
+    if(!mouseDown) return;
+    const r=drawCanvas.getBoundingClientRect();
+    const px=e.clientX-r.left, py=e.clientY-r.top;
+    if(drawMode==='erase'){ drawCtx.clearRect(px-20,py-20,40,40); return; }
+    if(lastPoint){
+      drawCtx.beginPath();
+      drawCtx.strokeStyle=currentColor;
+      drawCtx.lineWidth=strokeWidth;
+      drawCtx.lineCap='round';
+      drawCtx.lineJoin='round';
+      drawCtx.shadowColor=currentColor;
+      drawCtx.shadowBlur=strokeWidth*2;
+      drawCtx.moveTo(lastPoint.x,lastPoint.y);
+      drawCtx.lineTo(px,py);
+      drawCtx.stroke();
+      totalPoints++;
+      document.getElementById('stat-points').textContent=totalPoints;
+    }
+    lastPoint={x:px,y:py};
+  });
+  drawCanvas.addEventListener('mouseup',()=>{ mouseDown=false; lastPoint=null; });
+  drawCanvas.addEventListener('mouseleave',()=>{ mouseDown=false; lastPoint=null; });
+
+  // Touch
+  drawCanvas.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    mouseDown=true;
+    const r=drawCanvas.getBoundingClientRect();
+    lastPoint={x:e.touches[0].clientX-r.left,y:e.touches[0].clientY-r.top};
+  },{passive:false});
+  drawCanvas.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    if(!mouseDown) return;
+    const r=drawCanvas.getBoundingClientRect();
+    const px=e.touches[0].clientX-r.left,py=e.touches[0].clientY-r.top;
+    if(lastPoint){
+      drawCtx.beginPath();
+      drawCtx.strokeStyle=currentColor;
+      drawCtx.lineWidth=strokeWidth;
+      drawCtx.lineCap='round';
+      drawCtx.lineJoin='round';
+      drawCtx.shadowColor=currentColor;
+      drawCtx.shadowBlur=strokeWidth*2;
+      drawCtx.moveTo(lastPoint.x,lastPoint.y);
+      drawCtx.lineTo(px,py);
+      drawCtx.stroke();
+    }
+    lastPoint={x:px,y:py};
+  },{passive:false});
+  drawCanvas.addEventListener('touchend',()=>{ mouseDown=false; lastPoint=null; });
+}
+
+// Init mouse fallback immediately for non-cam drawing
+startMouseFallback();
+
+/* ===========================
+   MUSIC PLAYER
+=========================== */
+const tracks = [
+  { title:'NEURAL DRIFT', artist:'CyberSynth × AI', duration:222, genre:'Ambient Electronic' },
+  { title:'QUANTUM PULSE', artist:'DataWave Studios', duration:258, genre:'Cyberpunk Synthwave' }
+];
+
+let currentTrack = 0;
+let musicPlaying = false;
+let musicProgress = 0;
+let musicInterval = null;
+let volume = 70;
+
+function selectTrack(i){
+  currentTrack = i;
+  musicProgress = 0;
+  document.querySelectorAll('.music-card').forEach((c,j)=>{
+    c.classList.toggle('active',j===i);
+  });
+  document.getElementById('now-playing-label').textContent = tracks[i].title;
+  document.getElementById('time-total').textContent = formatTime(tracks[i].duration);
+  updateProgress();
+  if(musicPlaying){ clearInterval(musicInterval); startProgress(); }
+}
+
+function togglePlay(){
+  musicPlaying = !musicPlaying;
+  const btn = document.getElementById('play-btn');
+  btn.textContent = musicPlaying ? '⏸' : '▶';
+  if(musicPlaying){ startProgress(); animateEQ(); }
+  else { clearInterval(musicInterval); stopEQ(); }
+}
+
+function startProgress(){
+  clearInterval(musicInterval);
+  musicInterval = setInterval(()=>{
+    musicProgress += 1;
+    if(musicProgress >= tracks[currentTrack].duration){
+      musicProgress=0;
+      nextTrack();
+    }
+    updateProgress();
+  },1000);
+}
+
+function updateProgress(){
+  const pct = (musicProgress/tracks[currentTrack].duration)*100;
+  document.getElementById('progress-fill').style.width = pct+'%';
+  document.getElementById('time-current').textContent = formatTime(musicProgress);
+}
+
+function seekTrack(e){
+  const bar = e.currentTarget.querySelector('.progress-track');
+  const r = bar.getBoundingClientRect();
+  const pct = Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+  musicProgress = Math.round(pct*tracks[currentTrack].duration);
+  updateProgress();
+}
+
+function seekBy(s){
+  musicProgress = Math.max(0,Math.min(tracks[currentTrack].duration, musicProgress+s));
+  updateProgress();
+}
+
+function prevTrack(){ selectTrack((currentTrack-1+tracks.length)%tracks.length); }
+function nextTrack(){ selectTrack((currentTrack+1)%tracks.length); }
+
+function setVolume(v){
+  volume=v;
+  document.getElementById('vol-label').textContent=v+'%';
+  document.getElementById('vol-slider').style.setProperty('--vol',v+'%');
+}
+
+function formatTime(s){ return Math.floor(s/60)+':'+(s%60<10?'0':'')+(s%60); }
+
+// EQUALIZER ANIMATION
+let eqInterval=null;
+function animateEQ(){
+  const bars = document.querySelectorAll('.eq-bar');
+  eqInterval = setInterval(()=>{
+    bars.forEach(b=>{
+      const h = (Math.random()*90+10).toFixed(0);
+      b.style.height = h+'%';
+    });
+  },120);
+}
+function stopEQ(){
+  clearInterval(eqInterval);
+  document.querySelectorAll('.eq-bar').forEach(b=>b.style.height='10%');
+}
+
+/* ===========================
+   INIT
+=========================== */
+window.addEventListener('load',()=>{
+  document.getElementById('time-total').textContent = formatTime(tracks[0].duration);
+  resizeCanvases();
+  updateMpStatus('READY — CLICK ACTIVATE CAM', false);
+});
+
+window.addEventListener('resize', resizeCanvases);
+</script>
+</body>
+</html>
